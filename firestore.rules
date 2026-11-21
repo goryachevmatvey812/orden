@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signed() { return request.auth != null; }
+    function admin() {
+      return signed()
+        && request.auth.token.email == 'goryachevmatvey812@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+    function rolePerm(p) {
+      return signed()
+        && exists(/databases/$(database)/documents/roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.get('perms', {}).get(p, false) == true;
+    }
+    function permNum(p) {
+      return get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.get('perms', {}).get(p, 0);
+    }
+    function muteOk(m) {
+      return rolePerm('mute') && m <= request.time.toMillis() + permNum('maxMute') * 60000;
+    }
+    function banOk(b) {
+      return rolePerm('ban') && (b == -1 ? rolePerm('permBan') : b <= request.time.toMillis() + permNum('maxBan') * 86400000);
+    }
+    function pMember(cid) {
+      return signed()
+        && exists(/databases/$(database)/documents/pchans/$(cid))
+        && request.auth.uid in get(/databases/$(database)/documents/pchans/$(cid)).data.members;
+    }
+    function dmOk(pair) {
+      let p = pair.split('_');
+      let o = p[0] == request.auth.uid ? p[1] : p[0];
+      return (!exists(/databases/$(database)/documents/members/$(o))
+              || get(/databases/$(database)/documents/members/$(o)).data.get('dmOpen', true) == true)
+        && (!exists(/databases/$(database)/documents/prefs/$(o))
+              || !(request.auth.uid in get(/databases/$(database)/documents/prefs/$(o)).data.get('blocked', [])));
+    }
+
+    // Токены приложения (Android-FCM) живут в отдельной коллекции и меняются только серверным кодом.
+    // Публичный ключ Web Push — открыто читается сайтом.
+    match /config/{id} {
+      allow read: if true;
+      allow write: if admin();
+    }
+    match /pushtok/{uid} {
+      allow read: if signed() && request.auth.uid == uid;
+      allow write: if signed() && request.auth.uid == uid;
+    }
+    match /devtok/{uid} {
+      allow read: if signed() && request.auth.uid == uid;
+      allow write: if admin();
+    }
+
+    match /devices/{id} {
+      allow read: if admin() || rolePerm('viewdevs');
+      allow create, update: if signed();
+      allow delete: if admin();
+    }
+    match /roles/{id} {
+      allow read: if signed();
+      allow write: if admin();
+      allow create: if signed() && (
+        (request.resource.data.keys().hasOnly(['mute', 'muteWhy']) && muteOk(request.resource.data.get('mute', 0)))
+        || (request.resource.data.keys().hasOnly(['ban', 'banWhy']) && banOk(request.resource.data.get('ban', 0))));
+      allow update: if signed() && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mute', 'muteWhy']) && muteOk(request.resource.data.get('mute', 0)))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ban', 'banWhy']) && banOk(request.resource.data.get('ban', 0))));
+    }
+    match /roleDefs/{id} {
+      allow read: if true;
+      allow write: if admin();
+      allow create: if rolePerm('roles') && request.resource.data.get('perms', {}).size() == 0;
+      allow update: if rolePerm('roles') && resource.data.get('perms', {}).size() == 0
+        && request.resource.data.get('perms', {}).size() == 0;
+      allow delete: if rolePerm('roles') && resource.data.get('perms', {}).size() == 0;
+    }
+    match /positions/{id} {
+      allow read: if true;
+      allow write: if admin();
+    }
+    match /sanc/{id} {
+      allow read: if admin() || rolePerm('warn') || (signed() && request.auth.uid == id);
+      allow write: if admin() || rolePerm('warn');
+    }
+    match /logs/{id} {
+      allow read: if admin() || rolePerm('viewlogs');
+      allow write: if admin();
+      allow create: if signed() && request.resource.data.by == request.auth.uid
+        && (rolePerm('warn') || rolePerm('mute') || rolePerm('ban'));
+    }
+    match /prefs/{id} {
+      allow read, write: if signed() && request.auth.uid == id;
+    }
+    match /reports/{id} {
+      allow create: if signed() && request.resource.data.by == request.auth.uid;
+      allow read, update, delete: if admin() || rolePerm('reports');
+    }
+    match /pages/{id} {
+      allow read: if true;
+      allow write: if admin() || rolePerm('pages');
+    }
+    match /members/{id} {
+      allow read: if true;
+      allow write: if admin() || (signed() && request.auth.uid == id);
+    }
+    match /profiles/{id} {
+      allow read: if resource == null
+        || resource.data.get('open', true) == true
+        || (signed() && request.auth.uid == id)
+        || admin();
+      allow write: if admin() || (signed() && request.auth.uid == id);
+    }
+    match /dms/{pair}/msgs/{m} {
+      allow read: if signed() && request.auth.uid in pair.split('_');
+      allow create: if signed() && request.auth.uid in pair.split('_')
+        && request.resource.data.by == request.auth.uid && dmOk(pair);
+      allow delete: if admin() || (signed() && resource.data.by == request.auth.uid);
+    }
+    match /inbox/{u}/t/{pair} {
+      allow read: if signed() && request.auth.uid == u;
+      allow write: if signed() && request.auth.uid in pair.split('_') && u in pair.split('_');
+    }
+    function callOk(to) {
+      return (!exists(/databases/$(database)/documents/members/$(to))
+              || get(/databases/$(database)/documents/members/$(to)).data.get('dmOpen', true) == true)
+        && (!exists(/databases/$(database)/documents/prefs/$(to))
+              || !(request.auth.uid in get(/databases/$(database)/documents/prefs/$(to)).data.get('blocked', [])));
+    }
+    match /calls/{id} {
+      allow read: if signed() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signed() && request.resource.data.from == request.auth.uid && callOk(request.resource.data.to);
+      allow update: if signed() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow delete: if signed() && resource.data.from == request.auth.uid;
+    }
+    match /calls/{id}/ice/{c} {
+      allow read, create, delete: if signed()
+        && exists(/databases/$(database)/documents/calls/$(id))
+        && (get(/databases/$(database)/documents/calls/$(id)).data.from == request.auth.uid
+            || get(/databases/$(database)/documents/calls/$(id)).data.to == request.auth.uid);
+    }
+    match /pchans/{cid} {
+      allow read: if admin() || (signed() && request.auth.uid in resource.data.members);
+      allow create: if signed() && (admin() || rolePerm('priv') || rolePerm('rooms'));
+      allow update, delete: if admin() || (signed() && resource.data.by == request.auth.uid);
+    }
+    match /pchans/{cid}/rooms/{rid} {
+      allow read: if admin() || pMember(cid);
+      allow write: if admin() || (pMember(cid) && (rolePerm('priv') || rolePerm('rooms')
+        || get(/databases/$(database)/documents/pchans/$(cid)).data.by == request.auth.uid));
+    }
+    match /pchans/{cid}/rooms/{rid}/msgs/{m} {
+      allow read: if admin() || pMember(cid);
+      allow create: if pMember(cid) && request.resource.data.by == request.auth.uid;
+      allow delete: if admin() || (pMember(cid) && (resource.data.by == request.auth.uid || rolePerm('del')));
+    }
+    match /{col}/{id} {
+      allow read: if col in ['chans', 'rooms'];
+      allow write: if col in ['chans', 'rooms'] && (admin() || rolePerm('rooms'));
+    }
+    match /{col}/{id} {
+      allow read: if col in ['news', 'board', 'ticker', 'cpages'];
+      allow write: if (col in ['news', 'board', 'ticker'] && (admin() || rolePerm('news')))
+        || (col == 'cpages' && (admin() || rolePerm('pages')));
+    }
+    match /{col}/{id} {
+      allow read: if col in ['qa', 'fan', 'chat', 'gal'];
+      allow create: if col in ['qa', 'fan', 'chat', 'gal']
+        && signed() && request.resource.data.by == request.auth.uid;
+      allow update: if col in ['qa', 'fan', 'chat', 'gal']
+        && (admin() || (col == 'qa' && rolePerm('answer')));
+      allow delete: if col in ['qa', 'fan', 'chat', 'gal']
+        && (admin() || rolePerm('del') || resource.data.by == request.auth.uid);
+    }
+  }
+}
