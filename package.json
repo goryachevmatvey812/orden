@@ -1,0 +1,53 @@
+{
+  "name": "engineering",
+  "version": "1.0.0",
+  "description": "Орден — настольное приложение (Electron). Загружает тот же сайт, что и в браузере.",
+  "private": true,
+  "main": "main.cjs",
+  "author": "Gerd Sacs",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "dist:portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "ru.orden.app",
+    "productName": "Орден",
+    "asar": true,
+    "files": ["main.cjs", "preload.cjs", "stage/**", "package.json"],
+    "extraResources": [],
+    "directories": { "output": "dist" },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "stage/icon-512.png",
+      "artifactName": "Orden-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Орден",
+      "installerIcon": "stage/icon-512.png",
+      "uninstallerIcon": "stage/icon-512.png"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "stage/icon-512.png",
+      "category": "Network"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "stage/icon-512.png",
+      "category": "public.app-category.social-networking"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
