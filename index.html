@@ -313,18 +313,29 @@ async function boot(){try{const r=await fetch('version.json?_='+Date.now(),{cach
 async function pushInit(){if(!db||!uid)return;try{if(!('serviceWorker' in navigator)||!('Notification' in window))return;if(typeof S!=='undefined'&&S.push===false)return;if(Notification.permission!=='granted')return;const sc=await navigator.serviceWorker.ready;const r=await fetch('firebase-messaging-sw.js',{cache:'no-store'}).catch(()=>null);if(!r||!r.ok)return;const cfg=await db.collection('config').doc('push').get().catch(()=>null);if(!cfg||!cfg.exists||!cfg.data().key)return;const sub=await sc.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(cfg.data().key)});await db.collection('pushtok').doc(uid).set({list:firebase.firestore.FieldValue.arrayUnion({t:JSON.stringify(sub),d:(typeof devId==='function'?devId():''),ts:Date.now()})},{merge:true})}catch(e){}}
 function urlB64(s){s=(s||'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const raw=atob(s),u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u}
 function dlHtml(){const base=location.href.replace(/[#?].*$/,'');return '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Орден — офлайн-копия</title></head><body style="margin:0;background:#0a0a0c;color:#e0e0e0;font:14px system-ui"><div style="position:sticky;top:0;z-index:5;background:#13141a;border-bottom:1px solid #2a2d34;padding:8px 12px;font:12px ui-monospace,monospace">Офлайн-копия Ордена · '+(APP_VER||'')+' · <a style="color:#c0392b;text-decoration:none" target="_blank" rel="noopener" href="'+base+'">открыть онлайн-версию</a></div><iframe src="'+base+'index.html" style="position:fixed;left:0;top:34px;width:100%;height:calc(100% - 34px);border:0" allow="microphone; clipboard-write"></iframe></body></html>'}
-function openDownload(){const ua=navigator.userAgent,isWin=/Windows/i.test(ua),isAnd=/Android/i.test(ua);
- let m='<b>📥 Скачать</b><p class="mu">Одна база: сайт, приложение ПК и Android работают с одними данными.</p>';
- m+='<div class="card"><b>Приложения Ордена</b><div class="row"><a class="fb" href="app/Orden-Setup.exe" download>🖥 ПК · Windows</a><a class="fb" href="app/Orden.apk" download>🤖 Android</a></div><p class="mu">'+(isWin?'Ваша система — Windows.':isAnd?'Вы на Android.':'Выберите нужное.')+'</p></div>';
- m+='<div class="card"><b>Установить как приложение</b><div class="row"><button id="d-pwa">📲 Установить</button><button class="g" id="d-html">💾 Сохранить копию</button></div></div>';
+function openDownload(){const ua=navigator.userAgent,isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1),isMac=/Macintosh/i.test(ua)&&!isIOS,isWin=/Windows/i.test(ua),isAnd=/Android/i.test(ua);
+ let m='<b>📥 Скачать приложение</b><p class="mu">Одна база: сайт, приложение ПК и телефон работают с одними данными.</p>';
+ m+='<div class="card"><b>Выберите устройство</b><div class="row">'+
+   '<a class="fb" href="app/Orden-Setup.exe" download>🖥 ПК · Windows</a>'+
+   '<a class="fb" href="app/Orden.dmg" download>🍎 Mac</a>'+
+   '<a class="fb" href="app/Orden.apk" download>🤖 Android (APK)</a>'+
+   '<button class="fb" id="d-ios">📱 iPhone / iPad</button></div>'+
+   '<p class="mu">Определено устройство: '+(isAndroid?'Android':isIOS?'iPhone / iPad':isWin?'Windows':isMac?'Mac':'неизвестно')+'</p></div>';
+ m+='<div class="card"><b>Установить сайт как приложение</b><p class="mu">Без файлов, та же база и уведомления.</p><div class="row"><button id="d-pwa">📲 Установить на это устройство</button><button class="g" id="d-html">💾 Сохранить копию</button></div></div>';
  m+='<div class="card"><b>Обновления</b><p class="mu">Версия: '+(APP_VER||'—')+(APP_VER_LIVE&&APP_VER_LIVE!==APP_VER?' · доступна '+APP_VER_LIVE:'')+'</p><div class="row"><button class="g" id="d-chk">Проверить</button><button class="g" id="d-rel">Обновить</button></div></div>';
  const d=modal(m),q=s=>d.querySelector(s);
- if(q('#d-pwa'))q('#d-pwa').onclick=async()=>{if(window._bip){window._bip.prompt();try{await window._bip.userChoice}catch(e){}window._bip=null;return}if(/iPhone|iPad/i.test(ua)){alert('Нажмите «Поделиться» → «На экран Домой».');return}alert('Меню браузера → «Установить приложение».')};
+ if(q('#d-ios'))q('#d-ios').onclick=()=>{
+  d.remove();
+  const h='<b>📱 iPhone / iPad</b><p class="mu">Apple не разрешает скачивать программы не из App Store. Поэтому на iPhone сайт ставится как приложение — это выглядит и работает так же.</p><p><b>1.</b> Откройте этот сайт в <b>Safari</b>.<br><b>2.</b> Нажмите кнопку «Поделиться» (квадрат со стрелкой вверх).<br><b>3.</b> Выберите «На экран Домой».<br><b>4.</b> Добавить.</p><p class="mu">Появится иконка «Орден». Открывается в полный экран, с сохранёнными статьями при плохом интернете.</p>';
+  const d2=modal(h+'<div class="row"><button id="ios-ok">Понятно</button></div>');
+  d2.querySelector('#ios-ok').onclick=()=>d2.remove();
+ };
+ if(q('#d-pwa'))q('#d-pwa').onclick=async()=>{if(window._bip){window._bip.prompt();try{await window._bip.userChoice}catch(e){}window._bip=null;return}if(/iPhone|iPad/i.test(ua)){d.remove();q_ios();return}alert('Меню браузера (⋮) → «Установить приложение» или «Добавить на главный экран».')};
  if(q('#d-html'))q('#d-html').onclick=()=>{const b=new Blob([dlHtml()],{type:'text/html;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='Orden.html';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)};
  if(q('#d-chk'))q('#d-chk').onclick=async()=>{await verCheck();alert(APP_VER_LIVE?(APP_VER_LIVE===APP_VER?'Актуальная версия '+APP_VER+'.':'Доступна '+APP_VER_LIVE+'.'):'Не удалось проверить.');d.remove();openDownload()};
  if(q('#d-rel'))q('#d-rel').onclick=()=>{d.remove();applyUpd(null)};
-}
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._bip=e});
+ function q_ios(){const h='<b>📱 iPhone / iPad</b><p class="mu">1. Safari → «Поделиться». 2. «На экран Домой». 3. Добавить.</p><div class="row"><button id="ios-ok2">Понятно</button></div>';const d3=modal(h);d3.querySelector('#ios-ok2').onclick=()=>d3.remove()}
+}window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._bip=e});
 window.ordenApp={ver:()=>APP_VER,live:()=>APP_VER_LIVE,check:verCheck,reload:()=>location.reload(),update:()=>showUpd()};
 function modal(html){let d=document.getElementById('md2');if(d)d.remove();d=document.createElement('div');d.id='md2';d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';d.innerHTML='<div class="card" style="max-width:440px;width:100%;margin:0">'+html+'<div class="row"><button class="g" id="mclose">'+L('close')+'</button></div></div>';document.body.appendChild(d);d.querySelector('#mclose').onclick=()=>d.remove();return d}
 function openHelp(){const d=modal('<b>'+L('help')+'</b><p class="mu">'+L('helpIntro')+'</p><textarea id="hx" rows="4" style="width:100%" placeholder="'+L('helpPh')+'"></textarea><p id="hs" class="mu"></p><div class="row"><button id="hb">'+L('helpSend')+'</button></div>');
